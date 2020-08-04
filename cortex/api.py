@@ -83,16 +83,14 @@ class Wrapper:
     ws = None
     __result_dict = dict()
     __running = True
-    handler = None
     main = None
     client_id: str
     client_secret: str
     listeners = list()
 
-    def __init__(self, client_id, client_secret, handler, main):
+    def __init__(self, client_id, client_secret, main):
         self.url = "wss://localhost:6868"
         self.loop = asyncio.get_event_loop()
-        self.handler = handler
         self.client_id = client_id
         self.client_secret = client_secret
         self.main = main
@@ -100,9 +98,9 @@ class Wrapper:
     def register_listener(self, listener):
         self.listeners.append(listener)
 
-    def __handle_listener(self, name, data):
+    def __handle_listener(self, name, data, is_success: bool):
         for listener in self.listeners:
-            listener.handle(listener, name, data)
+            listener.handle(name, data, is_success)
 
     def run(self):
         loop = self.loop
@@ -141,13 +139,15 @@ class Wrapper:
             result_dict = json.loads(recv)
             if "id" in result_dict:
                 self.__result_dict[result_dict["id"]] = result_dict
-                self.__handle_listener(result_dict["id"], result_dict["result"])
+                if "result" in result_dict:
+                    self.__handle_listener(result_dict["id"], result_dict["result"], True)
+                elif "error" in result_dict:
+                    self.__handle_listener(result_dict["id"], result_dict["error"], False)
+
             elif "warning" in result_dict:
                 logger.warning(result_dict["warning"])
             else:
-                self.__handle_listener(list(result_dict)[0], result_dict)
-            self.handler.handle(result_dict)
-
+                self.__handle_listener(list(result_dict)[0], result_dict, True)
 
     async def __get_response(self, _id):
         while _id not in self.__result_dict:
@@ -603,33 +603,39 @@ class Wrapper:
 
 class Listener:
     def __new__(cls, *args, **kwargs):
-        handlers = {}
+        s_handlers = {}
+        f_handlers = {}
         for elem, value in cls.__dict__.items():
             if hasattr(value, "__is_listener__"):
-                handlers[getattr(value, "__listener_name__")] = value
-        cls.handlers = handlers
+                if getattr(value, "__is_success__"):
+                    s_handlers[getattr(value, "__listener_name__")] = value
+                else:
+                    f_handlers[getattr(value, "__listener_name__")] = value
+
+        cls = object.__new__(cls)
+        cls.s_handlers = s_handlers
+        cls.f_handlers = f_handlers
         return cls
 
-    def handle(self, name, value):
-        if name in self.handlers:
-            self.handlers[name](self, value)
+    def handle(self, name, value, is_success: bool):
+        if is_success:
+            if name in self.s_handlers:
+                self.s_handlers[name](self, value)
+        else:
+            if name in self.f_handlers:
+                self.f_handlers[name](self, value)
 
     @classmethod
-    def handler(cls, name):
+    def handler(cls, name, is_success: bool = True):
         def wrapper(func):
             actual = func
             if isinstance(actual, staticmethod):
                 actual = actual.__func__
 
             actual.__is_listener__ = True
+            actual.__is_success__ = is_success
             actual.__listener_name__ = name
 
             return func
 
         return wrapper
-
-
-class A(Listener):
-    @Listener.handler(1)
-    def a(self, data):
-        print(data)
