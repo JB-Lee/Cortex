@@ -130,6 +130,7 @@ class Wrapper:
         await self.__recv_task()
 
     async def close(self):
+        self.__handle_listener("close", None, True)
         self.__running = False
         await self.ws.close()
 
@@ -530,8 +531,25 @@ class Wrapper:
         }
         return await self.__request_api(payload)
 
-    # async def setup_profile(self):
-    #     return await self.__request_api(payload)
+    async def setup_profile(self, cortex_token: str, status: str, profile: str, headset: str = None,
+                            new_profile_name: str = None):
+        payload = {
+            "id": ID.BCI.SETUP_PROFILE,
+            "jsonrpc": "2.0",
+            "method": "setupProfile",
+            "params": {
+                "cortexToken": cortex_token,
+                "profile": profile,
+                "status": status
+            }
+        }
+
+        if headset:
+            payload["params"]["headset"] = headset
+        if new_profile_name:
+            payload["params"]["newProfileName"] = new_profile_name
+
+        return await self.__request_api(payload)
 
     async def load_guest_profile(self, cortex_token: str, headset: str):
         payload = {
@@ -584,14 +602,20 @@ class Wrapper:
     async def refresh_headsets(self):
         return await self.control_device("refresh")
 
+    async def load_profile(self, cortex_token, headset, profile):
+        return await self.setup_profile(cortex_token, "load", profile, headset=headset)
+
+    async def get_headset(self, headset: str = None):
+        res = await self.query_headsets(headset)
+        if len(res) < 1:
+            raise CortexException("기기를 찾을 수 없습니다.")
+        return res[0]["id"]
+
     async def prepare(self, client_id: str = None, client_secret: str = None, headset: str = None, debit: int = 10):
         client_id = client_id if client_id else self.client_id
         client_secret = client_secret if client_secret else self.client_secret
 
-        res = await self.query_headsets(headset)
-        if len(res) < 1:
-            raise CortexException("기기를 찾을 수 없습니다.")
-        headset = res[0]["id"]
+        headset = await self.get_headset(headset)
         await self.connect_headset(headset)
         await self.request_access(client_id, client_secret)
         res = await self.authorize(client_id, client_secret, debit=debit)
