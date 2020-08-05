@@ -81,7 +81,7 @@ if __name__ == "__main__":
 
     async def main():
         token, session = await api.prepare()
-        await api.subscribe(token, session, ["pow", "eeg"])
+        await api.subscribe(token, session, ["pow"])
 
 
     api = cortex.Wrapper(client_id=CLIENT_ID, client_secret=CLIENT_SECRET, main=main)
