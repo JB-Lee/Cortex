@@ -127,6 +127,7 @@ class Wrapper:
     async def start(self):
         self.ws = await websockets.connect(self.url)
         asyncio.create_task(self.main())
+        self.__handle_listener("start", None, True)
         await self.__recv_task()
 
     async def close(self):
