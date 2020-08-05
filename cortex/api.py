@@ -117,7 +117,7 @@ class Wrapper:
         future = asyncio.ensure_future(runner(), loop=loop)
         future.add_done_callback(stop_loop_on_completion)
         try:
-            loop.run_forever()
+            loop.run_until_complete(future)
         finally:
             future.remove_done_callback(stop_loop_on_completion)
 
@@ -131,25 +131,31 @@ class Wrapper:
         await self.__recv_task()
 
     async def close(self):
+        await self.ws.close()
         self.__handle_listener("close", None, True)
         self.__running = False
-        await self.ws.close()
+
+    def exit(self):
+        self.__running = False
 
     async def __recv_task(self):
         while self.__running:
-            recv = await self.ws.recv()
-            result_dict = json.loads(recv)
-            if "id" in result_dict:
-                self.__result_dict[result_dict["id"]] = result_dict
-                if "result" in result_dict:
-                    self.__handle_listener(result_dict["id"], result_dict["result"], True)
-                elif "error" in result_dict:
-                    self.__handle_listener(result_dict["id"], result_dict["error"], False)
+            try:
+                recv = await asyncio.wait_for(self.ws.recv(), 5)
+                result_dict = json.loads(recv)
+                if "id" in result_dict:
+                    self.__result_dict[result_dict["id"]] = result_dict
+                    if "result" in result_dict:
+                        self.__handle_listener(result_dict["id"], result_dict["result"], True)
+                    elif "error" in result_dict:
+                        self.__handle_listener(result_dict["id"], result_dict["error"], False)
 
-            elif "warning" in result_dict:
-                logger.warning(result_dict["warning"])
-            else:
-                self.__handle_listener(list(result_dict)[0], result_dict, True)
+                elif "warning" in result_dict:
+                    logger.warning(result_dict["warning"])
+                else:
+                    self.__handle_listener(list(result_dict)[0], result_dict, True)
+            except Exception as e:
+                pass
 
     async def __get_response(self, _id):
         while _id not in self.__result_dict:
@@ -605,6 +611,10 @@ class Wrapper:
 
     async def load_profile(self, cortex_token, headset, profile):
         return await self.setup_profile(cortex_token, "load", profile, headset=headset)
+
+    async def get_current_profile_id(self, cortex_token: str, headset: str):
+        _id = (await self.get_current_profile(cortex_token, headset))["name"]
+        return _id if _id != "null" else None
 
     async def get_headset(self, headset: str = None):
         res = await self.query_headsets(headset)
