@@ -622,14 +622,15 @@ class Wrapper:
             raise CortexException("기기를 찾을 수 없습니다.")
         return res[0]["id"]
 
-    async def prepare(self, client_id: str = None, client_secret: str = None, headset: str = None, debit: int = 10):
+    async def prepare(self, client_id: str = None, client_secret: str = None, headset: str = None, debit: int = 10,
+                      _license: str = None):
         client_id = client_id if client_id else self.client_id
         client_secret = client_secret if client_secret else self.client_secret
 
         headset = await self.get_headset(headset)
         await self.connect_headset(headset)
         await self.request_access(client_id, client_secret)
-        res = await self.authorize(client_id, client_secret, debit=debit)
+        res = await self.authorize(client_id, client_secret, debit=debit, _license=_license)
         token = res["cortexToken"]
         res = await self.create_session(token, "active", headset)
         session = res["id"]
